@@ -7,6 +7,59 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import hashlib
 
+def get_db_connection():
+    return psycopg2.connect(
+        dbname='trading',
+        user='your_username',
+        password='your_password',
+        host='localhost',
+        port='5432',
+        cursor_factory=RealDictCursor
+    )
+
+def initialize_db():
+    conn = psycopg2.connect(
+        dbname='trading',
+        user='123',
+        password='123123',
+        host='localhost',
+        port='5432',
+        cursor_factory=RealDictCursor
+    )
+    cur = conn.cursor()
+
+    cur.execute("DROP TABLE IF EXISTS user_positions, user_balances, users CASCADE;")
+
+    cur.execute("""
+        CREATE TABLE users (
+            username VARCHAR(50) PRIMARY KEY,
+            password_hash VARCHAR(255) NOT NULL
+        );
+        CREATE TABLE user_balances (
+            user_id VARCHAR(50) PRIMARY KEY,
+            balance DECIMAL(10, 2) NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(username)
+        );
+        CREATE TABLE user_positions (
+            user_id VARCHAR(50),
+            currency VARCHAR(50),
+            amount DECIMAL(10, 2) NOT NULL,
+            PRIMARY KEY (user_id, currency),
+            FOREIGN KEY (user_id) REFERENCES users(username)
+        );
+    """)
+
+    password = "123123"
+    password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()  # 对密码进行哈希处理
+    cur.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", ('123', password_hash))
+
+    cur.execute("INSERT INTO user_balances (user_id, balance) VALUES (%s, %s)", ('123', 10000))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def kline_command(name: str):
     msg = kline.get_kline(name, '1h')
     if msg == "Symbol not found":
@@ -90,27 +143,22 @@ def buy():
 
     price = float(price)
     required_balance = amount * price
-    current_balance = users_balance.get(user_id, 0)
 
-    if current_balance < required_balance:
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT balance FROM user_balances WHERE user_id = %s", (user_id,))
+    user_balance = cur.fetchone()
+
+    if user_balance is None or user_balance['balance'] < required_balance:
+        cur.close()
+        conn.close()
         return jsonify({"error": "Not enough balance"}), 400
 
     _update_balance(user_id, -required_balance)
-    users_positions[user_id] = users_positions.get(user_id, {})
-    users_positions[user_id][currency] = (
-            users_positions[user_id].get(currency, 0) + amount
-    )
+    _update_position(user_id, currency, amount)
 
-    return jsonify(
-        {
-            "user_id": user_id,
-            "action": "buy",
-            "currency": currency,
-            "amount": amount,
-            "price": price,
-            "balance": users_balance[user_id],
-        }
-    )
+    return jsonify({"user_id": user_id, "action": "buy", "currency": currency, "amount": amount, "price": price, "balance": user_balance['balance'] - required_balance})
 
 
 @app.route("/sell")
@@ -124,25 +172,33 @@ def sell():
         return jsonify({"error": "Unable to fetch current price"}), 500
 
     price = float(price)
-    current_position = users_positions.get(user_id, {}).get(currency, 0)
+    total_sale = amount * price
 
-    if current_position < amount:
-        return jsonify({"error": "Not enough position"}), 400
+    _update_position(user_id, currency, -amount)
+    _update_balance(user_id, total_sale)
 
-    _update_balance(user_id, amount * price)
-    users_positions[user_id][currency] -= amount
+    return jsonify({"user_id": user_id, "action": "sell", "currency": currency, "amount": amount, "price": price})
 
-    return jsonify(
-        {
-            "user_id": user_id,
-            "action": "sell",
-            "currency": currency,
-            "amount": amount,
-            "price": price,
-            "balance": users_balance[user_id],
-        }
-    )
+def _update_position(user_id, currency, amount):
+    conn = get_db_connection()
+    cur = conn.cursor()
 
+    if amount < 0:
+        cur.execute("SELECT amount FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
+        user_position = cur.fetchone()
+
+        if user_position:
+            new_amount = user_position['amount'] + amount
+            if new_amount <= 1e-7:
+                cur.execute("DELETE FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
+            else:
+                cur.execute("UPDATE user_positions SET amount = %s WHERE user_id = %s AND currency = %s", (new_amount, user_id, currency))
+    else:
+        cur.execute("INSERT INTO user_positions (user_id, currency, amount) VALUES (%s, %s, %s) ON CONFLICT (user_id, currency) DO UPDATE SET amount = user_positions.amount + EXCLUDED.amount", (user_id, currency, amount))
+
+    conn.commit()
+    cur.close()
+    conn.close()
 @app.route("/query_balance")
 def query_balance():
     user_id = request.args.get("user_id")
@@ -165,8 +221,15 @@ def top_up():
 
 
 def _update_balance(user_id, amount):
-    users_balance[user_id] = users_balance.get(user_id, 0) + amount
-
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE user_balances SET balance = balance + %s WHERE user_id = %s",
+        (amount, user_id)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8080, debug=True)
