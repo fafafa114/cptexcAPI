@@ -1,4 +1,5 @@
 from functools import wraps
+from decimal import Decimal
 
 from flask import Flask, jsonify, request, send_file, abort
 import requests
@@ -9,43 +10,14 @@ import hashlib
 
 def get_db_connection():
     return psycopg2.connect(
-        dbname='trading',
-        user='123',
+        dbname='postgres',
+        user='postgres',
         password='123123',
         host='localhost',
         port='5432',
         cursor_factory=RealDictCursor
     )
 
-def initialize_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("DROP TABLE IF EXISTS user_positions, user_balances, users CASCADE;")
-
-    cur.execute("""
-        CREATE TABLE users (
-            username VARCHAR(50) PRIMARY KEY,
-            password_hash VARCHAR(255) NOT NULL
-        );
-        CREATE TABLE user_balances (
-            user_id VARCHAR(50) PRIMARY KEY,
-            balance DECIMAL(10, 2) NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(username)
-        );
-        CREATE TABLE user_positions (
-            user_id VARCHAR(50),
-            currency VARCHAR(50),
-            amount DECIMAL(10, 2) NOT NULL,
-            PRIMARY KEY (user_id, currency),
-            FOREIGN KEY (user_id) REFERENCES users(username)
-        );
-    """)
-
-    add_user('123', '123123')
-    conn.commit()
-    cur.close()
-    conn.close()
 
 
 def kline_command(name: str):
@@ -150,7 +122,12 @@ def plot_price():
 def buy():
     user_id = request.args.get("user_id")
     currency = request.args.get("currency", "BTC")
-    amount = float(request.args.get("amount", 1))
+    try:
+        amount = float(request.args.get("amount", 1))
+        if amount <= 0:
+            raise ValueError("Amount must be a positive number.")
+    except ValueError as e:
+        return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
     price = get_price(currency)
 
     if price is None:
@@ -164,7 +141,7 @@ def buy():
 
     cur.execute("SELECT balance FROM user_balances WHERE user_id = %s", (user_id,))
     user_balance = cur.fetchone()
-    if user_balance is None or user_balance['balance'] < required_balance:
+    if user_balance is None or user_balance['balance'] + Decimal(1e-4) < required_balance:
         cur.close()
         conn.close()
         return jsonify({"error": "Not enough balance"}), 400
@@ -186,9 +163,15 @@ def buy():
 @app.route("/sell")
 @requires_auth
 def sell():
+
     user_id = request.args.get("user_id")
     currency = request.args.get("currency", "BTC")
-    amount = float(request.args.get("amount", 1))
+    try:
+        amount = float(request.args.get("amount", 1))
+        if amount <= 0:
+            raise ValueError("Amount must be a positive number.")
+    except ValueError as e:
+        return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
     price = get_price(currency)
 
     if price is None:
@@ -201,7 +184,8 @@ def sell():
 
     cur.execute("SELECT amount FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
     user_position = cur.fetchone()
-    if user_position is None or user_position['amount'] < amount:
+    # print(f"amount: {amount}")
+    if user_position is None or user_position['amount'] + Decimal(1e-6) < amount:
         cur.close()
         conn.close()
         return jsonify({"error": "Not enough position"}), 400
@@ -226,8 +210,10 @@ def _update_position(user_id, currency, amount):
     cur.execute("SELECT amount FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
     result = cur.fetchone()
     if result:
-        new_amount = result['amount'] + amount
-        if new_amount <= 1e-7:
+        amount_decimal = Decimal(str(amount))
+        new_amount = result['amount'] + amount_decimal
+        # print(new_amount)
+        if new_amount < 1e-8:
             cur.execute("DELETE FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
             new_amount = 0
         else:
@@ -238,7 +224,7 @@ def _update_position(user_id, currency, amount):
             cur.execute("INSERT INTO user_positions (user_id, currency, amount) VALUES (%s, %s, %s) RETURNING amount", (user_id, currency, amount))
             new_amount = cur.fetchone()['amount']
         else:
-            new_amount = 0
+            assert(False)
     conn.commit()
     cur.close()
     conn.close()
@@ -275,5 +261,39 @@ def _update_balance(user_id, amount):
     conn.close()
     return new_balance
 
+def initialize_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("DROP TABLE IF EXISTS user_positions CASCADE")
+    cur.execute("DROP TABLE IF EXISTS user_balances CASCADE")
+    cur.execute("DROP TABLE IF EXISTS users CASCADE")
+    cur.execute("""
+        CREATE TABLE users (
+            username VARCHAR(50) PRIMARY KEY,
+            password_hash VARCHAR(255) NOT NULL
+        );
+        CREATE TABLE user_balances (
+            user_id VARCHAR(50) PRIMARY KEY,
+            balance DECIMAL(15, 3) NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(username)
+        );
+        CREATE TABLE user_positions (
+            user_id VARCHAR(50),
+            currency VARCHAR(50),
+            amount DECIMAL(25, 9) NOT NULL,
+            PRIMARY KEY (user_id, currency),
+            FOREIGN KEY (user_id) REFERENCES users(username)
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    add_user('q123', '123123')
+
+
+
 if __name__ == "__main__":
+    initialize_db()
     app.run(host="127.0.0.1", port=8080, debug=True)
