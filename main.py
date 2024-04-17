@@ -1,23 +1,22 @@
 from functools import wraps
 from decimal import Decimal
-
 from flask import Flask, jsonify, request, send_file, abort
 import requests
 from query_script import kline, search_symbol
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import hashlib
+import sys
 
 def get_db_connection():
     return psycopg2.connect(
         dbname='postgres',
         user='postgres',
         password='123123',
-        host='localhost',
+        host='host.docker.internal',
         port='5432',
         cursor_factory=RealDictCursor
     )
-
 
 
 def kline_command(name: str):
@@ -29,15 +28,6 @@ def kline_command(name: str):
         return send_file(filepath, mimetype='image/jpeg')
 
 app = Flask(__name__)
-
-# users_balance = {}
-
-# users_positions = {}
-
-users = {
-    "admin": "password"
-}
-
 
 def check_auth(username, password):
     conn = get_db_connection()
@@ -63,7 +53,7 @@ def add_user(username, password):
         conn.commit()
         success = True
     except psycopg2.Error as e:
-        print(f"Database error: {e}")
+        print(f"Database error: {e}", file=sys.stderr)
         conn.rollback()
         success = False
     finally:
@@ -71,18 +61,16 @@ def add_user(username, password):
         conn.close()
     return success
 
-def authenticate():
-    return jsonify({"message": "Authentication required"}), 401
-
+def auth_fail():
+    return jsonify({"message": "Auth failed"}), 401
 
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
         if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
+            return auth_fail()
         return f(*args, **kwargs)
-
     return decorated
 
 @app.route("/")
@@ -116,7 +104,6 @@ def plot_price():
         abort(400, description='No currency provided')
     return kline_command(currency)
 
-
 @app.route("/buy")
 @requires_auth
 def buy():
@@ -125,7 +112,7 @@ def buy():
     try:
         amount = float(request.args.get("amount", 1))
         if amount <= 0:
-            raise ValueError("Amount must be a positive number.")
+            raise ValueError
     except ValueError as e:
         return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
     price = get_price(currency)
@@ -169,9 +156,9 @@ def sell():
     try:
         amount = float(request.args.get("amount", 1))
         if amount <= 0:
-            raise ValueError("Amount must be a positive number.")
+            raise ValueError
     except ValueError as e:
-        return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
+        return jsonify({"error": "Invalid amount. Please provide a positive number."}), 400
     price = get_price(currency)
 
     if price is None:
@@ -243,7 +230,7 @@ def query_balance():
     balance = result['balance'] if result else 0
     return jsonify({"user_id": user_id, "balance": balance})
 
-@app.route("/top_up", methods=["GET"])
+@app.route("/top_up")
 @requires_auth
 def top_up():
     user_id = request.args.get("user_id")
