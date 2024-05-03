@@ -6,18 +6,22 @@ from query_script import kline, search_symbol
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import hashlib
-import sys
+import sys, os
 
 def get_db_connection():
+    dbname = os.getenv('POSTGRES_DB', 'postgres')
+    user = os.getenv('POSTGRES_USER', 'postgres')
+    password = os.getenv('POSTGRES_PASSWORD', '123123')
+    host = os.getenv('DATABASE_HOST', 'localhost')
+    port = os.getenv('DATABASE_PORT', '5432')
     return psycopg2.connect(
-        dbname='postgres',
-        user='postgres',
-        password='123123',
-        host='host.docker.internal',
-        port='5432',
+        dbname=dbname,
+        user=user,
+        password=password,
+        host=host,
+        port=port,
         cursor_factory=RealDictCursor
     )
-
 
 def kline_command(name: str):
     msg = kline.get_kline(name, '1h')
@@ -30,6 +34,8 @@ def kline_command(name: str):
 app = Flask(__name__)
 
 def check_auth(username, password):
+    print('222')
+    print('222', sys.stderr)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT password_hash FROM users WHERE username = %s", (username,))
@@ -41,7 +47,6 @@ def check_auth(username, password):
         password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
         return user['password_hash'] == password_hash
     return False
-
 
 def add_user(username, password):
     conn = get_db_connection()
@@ -251,7 +256,6 @@ def _update_balance(user_id, amount):
 def initialize_db():
     conn = get_db_connection()
     cur = conn.cursor()
-
     cur.execute("DROP TABLE IF EXISTS user_positions CASCADE")
     cur.execute("DROP TABLE IF EXISTS user_balances CASCADE")
     cur.execute("DROP TABLE IF EXISTS users CASCADE")
@@ -276,11 +280,4 @@ def initialize_db():
     conn.commit()
     cur.close()
     conn.close()
-
     add_user('q123', '123123')
-
-
-
-if __name__ == "__main__":
-    initialize_db()
-    app.run(host="127.0.0.1", port=8080, debug=True)

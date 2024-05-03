@@ -4,16 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bd386c7-3c4c-4a50-a84e-fb8fde91c00b" name="Changes" comment="improve robustness">
-      <change afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/cptexcAPI.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/cptexcAPI.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+    <list default="true" id="9bd386c7-3c4c-4a50-a84e-fb8fde91c00b" name="Changes" comment="add docker files">
+      <change afterPath="$PROJECT_DIR$/deploy.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/k8s.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/source/fk.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/source/init_db.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kl.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/kl.jpg" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/query_script/kline.py" beforeDir="false" afterPath="$PROJECT_DIR$/query_script/kline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/query_script/requests.py" beforeDir="false" afterPath="$PROJECT_DIR$/query_script/requests.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -75,6 +74,12 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/source" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="cptexcAPI" />
@@ -123,7 +128,10 @@
       <workItem from="1712139490648" duration="33000" />
       <workItem from="1712139735200" duration="6071000" />
       <workItem from="1713302205227" duration="1199000" />
-      <workItem from="1713303419887" duration="6560000" />
+      <workItem from="1713303419887" duration="7204000" />
+      <workItem from="1713959883514" duration="1789000" />
+      <workItem from="1714729948819" duration="9995000" />
+      <workItem from="1714741678855" duration="10962000" />
     </task>
     <task id="LOCAL-00001" summary="update functions, add kline">
       <option name="closed" value="true" />
@@ -165,7 +173,15 @@
       <option name="project" value="LOCAL" />
       <updated>1711221179589</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="add docker files">
+      <option name="closed" value="true" />
+      <created>1713354390767</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1713354390767</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -175,9 +191,10 @@
     <MESSAGE value="update functions, add kline" />
     <MESSAGE value="fix bugs" />
     <MESSAGE value="improve robustness" />
-    <option name="LAST_COMMIT_MESSAGE" value="improve robustness" />
+    <MESSAGE value="add docker files" />
+    <option name="LAST_COMMIT_MESSAGE" value="add docker files" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/cptexcAPI$main.coverage" NAME="main Coverage Results" MODIFIED="1713303789466" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/cptexcAPI$main.coverage" NAME="main Coverage Results" MODIFIED="1714744675157" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

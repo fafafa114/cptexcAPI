@@ -35,4 +35,10 @@ ENV FLASK_APP=main.py
 ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=8080
 
-CMD ["flask", "run", "--host=0.0.0.0", "--port=8080"]
+#CMD ["flask", "run", "--host=0.0.0.0", "--port=8080"]
+COPY source/fk.sh /app/fk.sh
+COPY source/init_db.py /app/init_db.py
+
+RUN chmod +x /app/fk.sh
+
+CMD ["/app/fk.sh"]
