@@ -122,7 +122,7 @@
       <workItem from="1713303419887" duration="7204000" />
       <workItem from="1713959883514" duration="1789000" />
       <workItem from="1714729948819" duration="9995000" />
-      <workItem from="1714741678855" duration="11090000" />
+      <workItem from="1714741678855" duration="11112000" />
     </task>
     <task id="LOCAL-00001" summary="update functions, add kline">
       <option name="closed" value="true" />
@@ -180,7 +180,15 @@
       <option name="project" value="LOCAL" />
       <updated>1714760193242</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="k8s">
+      <option name="closed" value="true" />
+      <created>1714760258122</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1714760258122</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
