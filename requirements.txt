@@ -30,9 +30,12 @@ pyparsing==3.1.2
 pyquery==2.0.0
 python-dateutil==2.9.0.post0
 pytz==2024.1
+cachelib==0.13.0
+msgspec==0.18.6
+Flask-Session==0.8.0
 requests==2.31.0
 six==1.16.0
-TA-Lib==0.4.28
+TA-Lib-Precompiled==0.4.25
 Twisted==24.3.0
 typing_extensions==4.11.0
 tzdata==2024.1

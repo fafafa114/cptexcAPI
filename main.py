@@ -1,6 +1,7 @@
 from functools import wraps
 from decimal import Decimal
-from flask import Flask, jsonify, request, send_file, abort
+from flask import Flask, request, render_template_string, redirect, url_for, jsonify, abort, session, send_file
+from flask_session import Session
 import requests
 from query_script import kline, search_symbol
 import psycopg2
@@ -32,10 +33,12 @@ def kline_command(name: str):
         return send_file(filepath, mimetype='image/jpeg')
 
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.urandom(24)
+app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_TYPE"] = "filesystem"
+Session(app)
 
 def check_auth(username, password):
-    print('222')
-    print('222', sys.stderr)
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT password_hash FROM users WHERE username = %s", (username,))
@@ -52,35 +55,110 @@ def add_user(username, password):
     conn = get_db_connection()
     cur = conn.cursor()
     password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    msg = "Successful!"
     try:
-        cur.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, password_hash))
-        cur.execute("INSERT INTO user_balances (user_id, balance) VALUES (%s, %s)", (username, 0))
+        # cur.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, password_hash))
+        # cur.execute("INSERT INTO user_balances (user_id, balance) VALUES (%s, %s)", (username, 0))
+        cur.execute(f"INSERT INTO users (username, password_hash) VALUES ('{username}', '{password_hash}')")
+        cur.execute(f"INSERT INTO user_balances (user_id, balance) VALUES ('{username}', 0)")
         conn.commit()
         success = True
     except psycopg2.Error as e:
-        print(f"Database error: {e}", file=sys.stderr)
+        msg = str(e)
         conn.rollback()
         success = False
     finally:
         cur.close()
         conn.close()
-    return success
+    return (success, msg)
 
 def auth_fail():
     return jsonify({"message": "Auth failed"}), 401
 
 def requires_auth(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return auth_fail()
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:  
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
-    return decorated
+    return decorated_function
 
-@app.route("/")
-def homepage():
-    return "Welcome to the homepage. Available APIs: /query_price, /plot_price, /buy, /sell, /query_balance, /top_up"
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        if check_auth(username, password):
+            session['user_id'] = username
+            return redirect(url_for("dashboard"))
+        else:
+            return "Login Failed", 401
+    return '''
+    <form method="post">
+        Username: <input type="text" name="username"><br>
+        Password: <input type="password" name="password"><br>
+        <input type="submit" value="Login">
+    </form>
+    <a href="/register">Register</a>
+    '''
+
+@app.route("/logout")
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
+
+@app.route("/dashboard")
+@requires_auth
+def dashboard():
+    return '''
+    <h1>Dashboard</h1>
+    <a href="/query_price"><button>Query Price</button></a>
+    <a href="/buy"><button>Buy</button></a>
+    <a href="/sell"><button>Sell</button></a>
+    <a href="/query_balance"><button>Query Balance</button></a>
+    <a href="/position"><button>View Positions</button></a>
+    <a href="/top_up"><button>Top Up Balance</button></a>
+    <a href="/plot_price"><button>Plot Price</button></a>
+    <a href="/logout"><button>Logout</button><a>
+    '''
+
+
+@app.route("/position", methods=["GET"])
+@requires_auth
+def non_zero_positions():
+    user_id = session.get('user_id')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT currency, amount FROM user_positions WHERE user_id = %s AND amount > 0", (user_id,))
+        positions = cur.fetchall()
+        if not positions:
+            return jsonify({'message': 'No positions found.'})
+        return jsonify({'positions': positions})
+    except Exception as e:
+        print(e)
+        return jsonify({'error': 'Database error'}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        flag, message = add_user(username, password)
+        if not flag:
+            return message, 500
+        else:
+            return message, 200
+    return '''
+    <form method="post">
+        Username: <input type="text" name="username"><br>
+        Password: <input type="password" name="password"><br>
+        <input type="submit" value="Register">
+    </form>
+    '''
 
 def get_price(symbol):
     base_url = "https://www.binance.com/api/v3/ticker/price"
@@ -93,109 +171,138 @@ def get_price(symbol):
         print(f"Error fetching price data: {e}")
         return None
 
-@app.route("/query_price")
+@app.route("/query_price", methods=["GET", "POST"])
 def query_price():
-    currency = request.args.get("currency", "BTC")
-    price = get_price(currency)
-    if price:
-        return jsonify({"currency": currency, "price": price})
-    else:
-        return jsonify({"error": "Unable to fetch price data"}), 500
+    if request.method == "POST":
+        currency = request.form["currency"]
+        price = get_price(currency)
+        if price:
+            return jsonify({"currency": currency, "price": price})
+        else:
+            return jsonify({"error": "Wrong currency"}), 500
+    return '''
+    <form method="post">
+        Currency: <input type="text" name="currency"><br>
+        <input type="submit" value="Query Price">
+    </form>
+    '''
 
-@app.route("/plot_price")
+@app.route("/plot_price", methods=["GET", "POST"])
+@requires_auth
 def plot_price():
-    currency = request.args.get("symbol")
-    if not currency:
-        abort(400, description='No currency provided')
-    return kline_command(currency)
+    if request.method == "POST":
+        currency = request.form["currency"]
+        return kline_command(currency)
+    return '''
+    <form method="post">
+        Currency: <input type="text" name="currency"><br>
+        <input type="submit" value="Plot Price">
+    </form>
+    '''
 
-@app.route("/buy")
+@app.route("/buy", methods=["GET", "POST"])
 @requires_auth
 def buy():
-    user_id = request.args.get("user_id")
-    currency = request.args.get("currency", "BTC")
-    try:
-        amount = float(request.args.get("amount", 1))
-        if amount <= 0:
-            raise ValueError
-    except ValueError as e:
-        return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
-    price = get_price(currency)
+    if request.method == "POST":
+        user_id = session["user_id"]
+        currency = request.form["currency"]
+        amount = request.form["amount"]
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
 
-    if price is None:
-        return jsonify({"error": "Unable to fetch current price"}), 500
+        price = get_price(currency)
+        if price is None:
+            return jsonify({"error": "Unable to fetch current price"}), 500
 
-    price = float(price)
-    required_balance = amount * price
+        price = float(price)
+        required_balance = amount * price
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    cur.execute("SELECT balance FROM user_balances WHERE user_id = %s", (user_id,))
-    user_balance = cur.fetchone()
-    if user_balance is None or user_balance['balance'] + Decimal(1e-4) < required_balance:
-        cur.close()
-        conn.close()
-        return jsonify({"error": "Not enough balance"}), 400
+        cur.execute("SELECT balance FROM user_balances WHERE user_id = %s", (user_id,))
+        user_balance = cur.fetchone()
+        if user_balance is None or user_balance['balance'] < required_balance:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Not enough balance"}), 400
 
-    new_balance = _update_balance(user_id, -required_balance)
-    new_position = _update_position(user_id, currency, amount)
+        new_balance = _update_balance(user_id, -required_balance)
+        new_position = _update_position(user_id, currency, amount)
 
-    return jsonify({
-        "user_id": user_id,
-        "action": "buy",
-        "currency": currency,
-        "amount": amount,
-        "price": price,
-        "new_balance": new_balance,
-        "new_position": new_position
-    })
+        return jsonify({
+            "user_id": user_id,
+            "action": "buy",
+            "currency": currency,
+            "amount": amount,
+            "price": price,
+            "new_balance": new_balance,
+            "new_position": new_position
+        })
+    return '''
+    <form method="post">
+        Currency: <input type="text" name="currency"><br>
+        Amount: <input type="number" step="0.00000001" name="amount"><br>
+        <input type="submit" value="Buy">
+    </form>
+    '''
 
 
-@app.route("/sell")
+@app.route("/sell", methods=["GET", "POST"])
 @requires_auth
 def sell():
+    if request.method == "POST":
+        user_id = session.get('user_id')
+        currency = request.form["currency"]
+        amount = request.form["amount"]
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            return jsonify({"error": "Invalid amount. Please provide a positive number."}), 400
 
-    user_id = request.args.get("user_id")
-    currency = request.args.get("currency", "BTC")
-    try:
-        amount = float(request.args.get("amount", 1))
-        if amount <= 0:
-            raise ValueError
-    except ValueError as e:
-        return jsonify({"error": "Invalid amount. Please provide a positive number."}), 400
-    price = get_price(currency)
+        price = get_price(currency)
+        if price is None:
+            return jsonify({"error": "Unable to fetch current price"}), 500
 
-    if price is None:
-        return jsonify({"error": "Unable to fetch current price"}), 500
+        price = float(price)
+        total_sale = amount * price
 
-    price = float(price)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT amount FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
+        # cur.execute(f"SELECT amount FROM user_positions WHERE user_id = '{user_id}' AND currency = '{currency}'")
+        user_position = cur.fetchone()
+        if user_position is None or user_position['amount'] < amount:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Not enough position"}), 400
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+        new_position = _update_position(user_id, currency, -amount)
+        new_balance = _update_balance(user_id, total_sale)
 
-    cur.execute("SELECT amount FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
-    user_position = cur.fetchone()
-    # print(f"amount: {amount}")
-    if user_position is None or user_position['amount'] + Decimal(1e-6) < amount:
-        cur.close()
-        conn.close()
-        return jsonify({"error": "Not enough position"}), 400
+        return jsonify({
+            "user_id": user_id,
+            "action": "sell",
+            "currency": currency,
+            "amount": amount,
+            "price": price,
+            "new_balance": new_balance,
+            "new_position": new_position
+        })
+    return '''
+    <form method="post">
+        Currency: <input type="text" name="currency"><br>
+        Amount: <input type="number" step="0.00000001" name="amount"><br>
+        <input type="submit" value="Sell">
+    </form>
+    '''
 
-    total_sale = amount * price
-
-    new_position = _update_position(user_id, currency, -amount)
-    new_balance = _update_balance(user_id, total_sale)
-
-    return jsonify({
-        "user_id": user_id,
-        "action": "sell",
-        "currency": currency,
-        "amount": amount,
-        "price": price,
-        "new_balance": new_balance,
-        "new_position": new_position
-    })
 def _update_position(user_id, currency, amount):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -204,7 +311,6 @@ def _update_position(user_id, currency, amount):
     if result:
         amount_decimal = Decimal(str(amount))
         new_amount = result['amount'] + amount_decimal
-        # print(new_amount)
         if new_amount < 1e-8:
             cur.execute("DELETE FROM user_positions WHERE user_id = %s AND currency = %s", (user_id, currency))
             new_amount = 0
@@ -225,7 +331,7 @@ def _update_position(user_id, currency, amount):
 @app.route("/query_balance")
 @requires_auth
 def query_balance():
-    user_id = request.args.get("user_id")
+    user_id = session['user_id']
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT balance FROM user_balances WHERE user_id = %s", (user_id,))
@@ -235,13 +341,28 @@ def query_balance():
     balance = result['balance'] if result else 0
     return jsonify({"user_id": user_id, "balance": balance})
 
-@app.route("/top_up")
+@app.route("/top_up", methods=["GET", "POST"])
 @requires_auth
 def top_up():
-    user_id = request.args.get("user_id")
-    amount = float(request.args.get("amount", 0))
-    new_balance = _update_balance(user_id, amount)
-    return jsonify({"user_id": user_id, "top_up_amount": amount, "new_balance": new_balance})
+    if request.method == "POST":
+        user_id = session.get('user_id')
+        amount = request.form["amount"]
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            return jsonify({"error": "Invalid amount. Please provide a valid positive number."}), 400
+
+        new_balance = _update_balance(user_id, amount)
+
+        return jsonify({"user_id": user_id, "top_up_amount": amount, "new_balance": new_balance})
+    return '''
+    <form method="post">
+        Amount: <input type="number" step="0.00001" name="amount"><br>
+        <input type="submit" value="Top Up">
+    </form>
+    '''
 
 def _update_balance(user_id, amount):
     conn = get_db_connection()
@@ -281,3 +402,4 @@ def initialize_db():
     cur.close()
     conn.close()
     add_user('q123', '123123')
+

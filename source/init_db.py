@@ -23,19 +23,20 @@ def add_user(username, password):
     conn = get_db_connection()
     cur = conn.cursor()
     password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    msg = "Successful!"
     try:
         cur.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, password_hash))
         cur.execute("INSERT INTO user_balances (user_id, balance) VALUES (%s, %s)", (username, 0))
         conn.commit()
         success = True
     except psycopg2.Error as e:
-        print(f"Database error: {e}", file=sys.stderr)
+        msg = str(e)
         conn.rollback()
         success = False
     finally:
         cur.close()
         conn.close()
-    return success
+    return (success, msg)
 
 def initialize_db():
     conn = get_db_connection()
@@ -65,3 +66,5 @@ def initialize_db():
     cur.close()
     conn.close()
     add_user('q123', '123123')
+
+initialize_db()
