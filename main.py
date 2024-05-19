@@ -8,6 +8,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import hashlib
 import sys, os
+import time
 
 def get_db_connection():
     dbname = os.getenv('POSTGRES_DB', 'postgres')
@@ -186,6 +187,11 @@ def query_price():
         <input type="submit" value="Query Price">
     </form>
     '''
+def calculate_load():
+    start_time = time.time()
+    # Perform a non-optimizable CPU-intensive task
+    for i in range(1, 10000000):
+        _ = i ** 2
 
 @app.route("/plot_price", methods=["GET", "POST"])
 @requires_auth
