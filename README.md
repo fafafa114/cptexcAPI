@@ -12,3 +12,5 @@ APIs for simulating basic transactions. It supports querying, plotting price cha
 Query_price: BTC / ETH
 
 Plot price: BTCUSDT / ETHBTC
+
+basic functions -> k8s files(ingress port) -> autoscaling -> injection
